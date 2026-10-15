@@ -64,7 +64,7 @@ td.w{color:var(--warn);font-weight:600}
 <body>
 <main>
   <h1>Crop Monitor Simulator</h1>
-  <p class="sub">Virtual version of the ESP32 + I2C firmware. Move a slider and watch the LCD, LEDs, buzzer, serial output and SD log react, exactly as the code does.</p>
+  <p class="sub">SOIL SENSOR- for now its a software prototype, we will be getting back with the hardware in the upcoming weeks.</p>
 
   <div class="grid">
     <div>
@@ -183,7 +183,7 @@ function sample(){
   const status = allOk ? "OK" : "WARNING: "+offenders;
   const stamp = ts();
 
-  // Serial output (matches Serial.printf in the firmware)
+  // Serial output 
   const line = `[${stamp}] AirTemp=${v[0].toFixed(1)}C Hum=${v[1].toFixed(1)}% Lux=${v[2].toFixed(0)} SoilTemp=${v[3].toFixed(1)}C SoilMoist=${v[4].toFixed(0)} -> ${status}`;
   const term=$("term"); const div=document.createElement("div");
   if(!allOk) div.className="w"; div.textContent=line; term.appendChild(div);
