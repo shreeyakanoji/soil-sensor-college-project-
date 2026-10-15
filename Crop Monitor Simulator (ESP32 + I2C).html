@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Crop Monitor Simulator (ESP32 + I2C)</title>
+<style>
+:root{
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#eef2ec;--panel:#ffffff;--ink:#1b2a1f;--mute:#5d6b60;--line:#d3dcd0;
+  --ok:#2f7d4f;--warn:#c8321e;--okbg:#dff0e5;--warnbg:#f8dcd6;
+  --lcd-bg:#a9c27a;--lcd-ink:#1f2d10;--term-bg:#101812;--term-ink:#b9e3c3;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1611;--panel:#17211a;--ink:#e3eee5;--mute:#93a597;--line:#2a392d;
+  --ok:#52b97b;--warn:#ff6b52;--okbg:#1d3a28;--warnbg:#452019;
+  --lcd-bg:#8aa35c;--lcd-ink:#16200a;--term-bg:#0a100c;--term-ink:#a6d9b2;}}
+:root[data-theme="dark"]{--bg:#0f1611;--panel:#17211a;--ink:#e3eee5;--mute:#93a597;--line:#2a392d;--ok:#52b97b;--warn:#ff6b52;--okbg:#1d3a28;--warnbg:#452019;--lcd-bg:#8aa35c;--lcd-ink:#16200a;--term-bg:#0a100c;--term-ink:#a6d9b2;}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI",system-ui,-apple-system,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:22px;margin:0 0 4px}
+p.sub{margin:0 0 18px;color:var(--mute)}
+.grid{display:grid;grid-template-columns:1.15fr 1fr;gap:16px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+.panel h2{font-size:15px;margin:0 0 12px}
+.sensor{margin-bottom:16px}
+.srow{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.srow b{font-weight:600}
+.addr{color:var(--mute);font-size:12px;font-family:ui-monospace,Consolas,monospace}
+.val{font-variant-numeric:tabular-nums;font-weight:600}
+.val.bad{color:var(--warn)}
+input[type=range]{width:100%;margin:6px 0 0;-webkit-appearance:none;appearance:none;height:10px;border-radius:5px;background:var(--track);outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--ink);border:3px solid var(--panel);cursor:pointer}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--ink);border:3px solid var(--panel);cursor:pointer}
+.th{font-size:12px;color:var(--mute)}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px}
+button{font:inherit;font-size:14px;padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+button.primary{background:var(--ok);border-color:var(--ok);color:#fff}
+button:focus-visible,input:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+label.chk{font-size:14px;display:flex;align-items:center;gap:6px}
+.device{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+.lcd{background:var(--lcd-bg);color:var(--lcd-ink);font:600 20px/1.35 ui-monospace,Consolas,monospace;padding:10px 14px;border-radius:6px;border:3px solid #55663a;letter-spacing:1px;min-width:270px}
+.lcd div{white-space:pre}
+.leds{display:flex;gap:14px}
+.led{display:flex;flex-direction:column;align-items:center;font-size:12px;color:var(--mute);gap:4px}
+.led i{width:22px;height:22px;border-radius:50%;background:var(--line);display:block;transition:background .15s,box-shadow .15s}
+.led.on.g i{background:var(--ok);box-shadow:0 0 12px var(--ok)}
+.led.on.r i{background:var(--warn);box-shadow:0 0 12px var(--warn)}
+.led.on.b i{background:#e0a423;box-shadow:0 0 12px #e0a423}
+.badge{display:inline-block;padding:4px 10px;border-radius:999px;font-weight:600;font-size:13px}
+.badge.ok{background:var(--okbg);color:var(--ok)}
+.badge.warn{background:var(--warnbg);color:var(--warn)}
+pre.term{margin:0;background:var(--term-bg);color:var(--term-ink);font:12.5px/1.55 ui-monospace,Consolas,monospace;padding:12px;border-radius:8px;height:230px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+pre.term .w{color:#ff9a86}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td.w{color:var(--warn);font-weight:600}
+.note{font-size:12.5px;color:var(--mute);margin-top:8px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Crop Monitor Simulator</h1>
+  <p class="sub">Virtual version of the ESP32 + I2C firmware. Move a slider and watch the LCD, LEDs, buzzer, serial output and SD log react, exactly as the code does.</p>
+
+  <div class="grid">
+    <div>
+      <div class="panel">
+        <h2>Sensors on the I2C bus (SDA = GPIO 21, SCL = GPIO 22)</h2>
+        <div id="sensors"></div>
+        <div class="controls">
+          <button class="primary" id="sampleBtn">Sample now</button>
+          <label class="chk"><input type="checkbox" id="auto" checked> Auto-sample every 3 s</label>
+          <label class="chk"><input type="checkbox" id="sound"> Buzzer sound</label>
+        </div>
+        <div class="controls" style="margin-top:10px">
+          <span class="th">Presets:</span>
+          <button id="pOk">All normal</button>
+          <button id="pDry">Dry soil</button>
+          <button id="pHot">Heat wave</button>
+          <button id="pMulti">Multiple faults</button>
+        </div>
+        <p class="note">Shaded green band on each slider = safe range (the thresholds from the firmware). Outside it = warning.</p>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <h2>Field unit (ESP32 outputs)</h2>
+        <div class="device">
+          <div class="lcd" id="lcd" aria-live="polite"><div id="l1">T:-- H:--</div><div id="l2">Booting...</div></div>
+          <div class="leds">
+            <div class="led g" id="ledG"><i></i>OK LED</div>
+            <div class="led r" id="ledR"><i></i>Warn LED</div>
+            <div class="led b" id="buz"><i></i>Buzzer</div>
+          </div>
+        </div>
+        <p style="margin:12px 0 0">Status: <span class="badge ok" id="badge">OK</span></p>
+      </div>
+
+      <div class="panel">
+        <h2>Serial monitor (115200 baud)</h2>
+        <pre class="term" id="term"></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>SD card log: /crop_log.csv</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Timestamp</th><th>AirTemp_C</th><th>Humidity_pct</th><th>Lux</th><th>SoilTemp_C</th><th>SoilMoisture</th><th>Status</th></tr></thead>
+        <tbody id="log"></tbody>
+      </table>
+    </div>
+    <div class="controls" style="margin-top:10px">
+      <button id="copyCsv">Copy full log as CSV</button>
+      <span class="th" id="copyMsg"></span>
+    </div>
+  </div>
+</main>
+
+<script>
+// Same thresholds and names as crop_monitor.ino
+const S = [
+  {k:"AirTemp",  label:"Air temperature",  addr:"AHT20 · 0x38",         unit:"°C",  min:0,   max:50,    step:0.1, lo:15,   hi:35,    v:28,    d:1},
+  {k:"Humidity", label:"Air humidity",     addr:"AHT20 · 0x38",         unit:"%",   min:0,   max:100,   step:0.5, lo:30,   hi:80,    v:55,    d:1},
+  {k:"Light",    label:"Light intensity",  addr:"BH1750 · 0x23",        unit:" lux",min:0,   max:80000, step:100, lo:1000, hi:50000, v:20000, d:0},
+  {k:"SoilTemp", label:"Soil temperature", addr:"Soil sensor · 0x36",   unit:"°C",  min:0,   max:50,    step:0.1, lo:10,   hi:40,    v:24,    d:1},
+  {k:"SoilMoist",label:"Soil moisture (raw)",addr:"Soil sensor · 0x36", unit:"",    min:200, max:1200,  step:5,   lo:300,  hi:1000,  v:620,   d:0}
+];
+const $ = id => document.getElementById(id);
+const rows = [];          // CSV rows
+let audio = null;
+
+// Build sliders
+const host = $("sensors");
+S.forEach((s,i)=>{
+  const w = document.createElement("div"); w.className="sensor";
+  w.innerHTML = `<div class="srow"><b>${s.label}</b><span class="val" id="v${i}"></span></div>
+    <div class="addr">${s.addr}</div>
+    <input type="range" id="r${i}" min="${s.min}" max="${s.max}" step="${s.step}" value="${s.v}" aria-label="${s.label}">
+    <div class="th">Safe range: ${s.lo} to ${s.hi}${s.unit}</div>`;
+  host.appendChild(w);
+  const r = w.querySelector("input");
+  const a = (s.lo-s.min)/(s.max-s.min)*100, b = (s.hi-s.min)/(s.max-s.min)*100;
+  r.style.setProperty("--track",`linear-gradient(to right,var(--warnbg) 0 ${a}%,var(--okbg) ${a}% ${b}%,var(--warnbg) ${b}% 100%)`);
+  r.addEventListener("input",()=>{s.v=parseFloat(r.value);paint();});
+});
+function paint(){
+  S.forEach((s,i)=>{
+    const el=$("v"+i); el.textContent=s.v.toFixed(s.d)+s.unit;
+    el.classList.toggle("bad", s.v<s.lo||s.v>s.hi);
+  });
+}
+function setVals(a){a.forEach((v,i)=>{S[i].v=v;$("r"+i).value=v});paint();}
+
+const pad=n=>String(n).padStart(2,"0");
+function ts(){const d=new Date();return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;}
+
+function beep(){
+  $("buz").classList.add("on");
+  let n=0; const t=setInterval(()=>{
+    $("buz").classList.toggle("on", n%2===0); n++;
+    if($("sound").checked && n%2===1){
+      try{audio=audio||new (window.AudioContext||window.webkitAudioContext)();
+        const o=audio.createOscillator(),g=audio.createGain();o.frequency.value=2200;g.gain.value=.06;
+        o.connect(g);g.connect(audio.destination);o.start();o.stop(audio.currentTime+.18);}catch(e){}
+    }
+    if(n>=6){clearInterval(t);$("buz").classList.remove("on");}
+  },200);
+}
+
+// One pass of readCheckLogAlert()
+function sample(){
+  const v = S.map(s=>s.v);
+  const ok = S.map(s=>s.v>=s.lo && s.v<=s.hi);
+  const allOk = ok.every(Boolean);
+  const offenders = S.filter((s,i)=>!ok[i]).map(s=>s.k).join(" ");
+  const status = allOk ? "OK" : "WARNING: "+offenders;
+  const stamp = ts();
+
+  // Serial output (matches Serial.printf in the firmware)
+  const line = `[${stamp}] AirTemp=${v[0].toFixed(1)}C Hum=${v[1].toFixed(1)}% Lux=${v[2].toFixed(0)} SoilTemp=${v[3].toFixed(1)}C SoilMoist=${v[4].toFixed(0)} -> ${status}`;
+  const term=$("term"); const div=document.createElement("div");
+  if(!allOk) div.className="w"; div.textContent=line; term.appendChild(div);
+  while(term.children.length>60) term.removeChild(term.firstChild);
+  term.scrollTop=term.scrollHeight;
+
+  // LCD (16x2)
+  $("l1").textContent=`T:${v[0].toFixed(1)}C H:${v[1].toFixed(0)}%`.slice(0,16);
+  $("l2").textContent=(allOk?"Status: OK":"WARN:"+offenders).slice(0,16);
+
+  // LEDs, badge, buzzer
+  $("ledG").classList.toggle("on",allOk);
+  $("ledR").classList.toggle("on",!allOk);
+  const b=$("badge"); b.className="badge "+(allOk?"ok":"warn");
+  b.textContent=allOk?"OK":"WARNING: "+offenders;
+  if(!allOk) beep();
+
+  // SD log row
+  const row=[stamp,v[0].toFixed(2),v[1].toFixed(2),v[2].toFixed(0),v[3].toFixed(2),v[4].toFixed(0),allOk?"OK":offenders];
+  rows.push(row);
+  const tr=document.createElement("tr");
+  row.forEach((c,i)=>{const td=document.createElement("td");td.textContent=c;if(i===6&&!allOk)td.className="w";tr.appendChild(td);});
+  const body=$("log"); body.insertBefore(tr,body.firstChild);
+  while(body.children.length>10) body.removeChild(body.lastChild);
+}
+
+// Controls
+$("sampleBtn").onclick=sample;
+$("pOk").onclick=()=>{setVals([28,55,20000,24,620]);sample();};
+$("pDry").onclick=()=>{setVals([28,55,20000,24,240]);sample();};
+$("pHot").onclick=()=>{setVals([41,28,60000,34,620]);sample();};
+$("pMulti").onclick=()=>{setVals([12,88,500,7,1100]);sample();};
+$("copyCsv").onclick=async()=>{
+  const csv=["Timestamp,AirTemp_C,Humidity_pct,Lux,SoilTemp_C,SoilMoisture,Status",...rows.map(r=>r.join(","))].join("\n");
+  try{await navigator.clipboard.writeText(csv);$("copyMsg").textContent="Copied "+rows.length+" rows";}
+  catch(e){$("copyMsg").textContent="Copy blocked by the browser. Select the table instead.";}
+};
+let timer=null;
+function setAuto(){clearInterval(timer);if($("auto").checked)timer=setInterval(sample,3000);}
+$("auto").onchange=setAuto;
+
+// Boot sequence like setup()
+const term=$("term");
+["[BOOT] I2C bus started (SDA=21, SCL=22)","[OK] AHT20 found at 0x38","[OK] BH1750 found at 0x23","[OK] Soil sensor (seesaw) found at 0x36","[OK] LCD found at 0x27","[OK] SD card ready, /crop_log.csv created","[OK] WiFi connected, uploading to ThingSpeak"].forEach(t=>{const d=document.createElement("div");d.textContent=t;term.appendChild(d);});
+paint(); sample(); setAuto();
+</script>
+</body>
+</html>
